@@ -216,12 +216,31 @@ void search_movie(const char *csv_filename, const char *index_filename, const ch
 int main(){
     // build_index("DataSet/all_movies_heavy.csv", "DataSet/hash_index.bin");
 
-    char movie_name[100];
-    printf("Ingrese el nombre de la película a buscar: ");
-    fgets(movie_name, sizeof(movie_name), stdin);
-    movie_name[strcspn(movie_name, "\r\n")] = 0; // quitar salto
+    int opcion = 0;
+    while(opcion != 3){
+        printf("\nBienvenido.\n1. Buscar por el nombre de la película.\n2. Realizar búsqueda.\n3. Salir.\n");
+        scanf("%d", &opcion);
+        getchar();
 
-    search_movie("DataSet/all_movies_heavy.csv", "DataSet/hash_index.bin", movie_name);
-
+        switch(opcion){
+            case 1:
+                char movie_name[100];
+                printf("\nIngrese el nombre de la película a buscar: ");
+                fgets(movie_name, sizeof(movie_name), stdin);
+                movie_name[strcspn(movie_name, "\r\n")] = 0; // quitar salto
+                printf("Criterio de búsqueda guardado correctamente.\n");
+                break;
+            case 2:
+                search_movie("DataSet/all_movies_heavy.csv", "DataSet/hash_index.bin", movie_name);
+                break;
+            case 3:
+                printf("Saliendo...\n");
+                break;
+            default:
+                printf("Ingrese una opción válida...\n");
+                break;
+        }
+    }
+    
     return 0;
 }
