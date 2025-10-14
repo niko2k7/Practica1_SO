@@ -56,6 +56,7 @@ uint32_t MurmurHash2(const void * key, int len, uint32_t seed)
     return h;
 }
 
+// Creación del índice hash
 void build_index(const char *csv_filename, const char *index_filename){
     // Se abre el dataset, en modo lectura
     FILE *csv = fopen(csv_filename, "r");
@@ -158,21 +159,22 @@ void build_index(const char *csv_filename, const char *index_filename){
     printf("Colisiones:%lu \n", colisiones);
 }
 
-
+// Búsqueda
 void search_movie(const char *csv_filename, const char *index_filename, const char *movie_name) {
 
     FILE *csv = fopen(csv_filename, "r");
     if (!csv) {
-        perror("Error abriendo el archivo CSV");
+        perror("Error abriendo el archivo CSV.");
         return;
     }
 
     FILE *index = fopen(index_filename, "rb");
     if (!index) {
-        perror("Error abriendo el archivo de índice");
+        perror("Error abriendo el archivo de índice.");
         fclose(csv);
         return;
     }
+
     // Calcular hash
     int len = strlen(movie_name);
     if (len > CHAR_LENGTH) len = CHAR_LENGTH;
@@ -215,7 +217,7 @@ void search_movie(const char *csv_filename, const char *index_filename, const ch
 
 int main(){
     // build_index("DataSet/all_movies_heavy.csv", "DataSet/hash_index.bin");
-    //
+
     int opcion = 0;
     while(opcion != 3){
         printf("\nBienvenido.\n1. Buscar por el nombre de la película.\n2. Realizar búsqueda.\n3. Salir.\n");
