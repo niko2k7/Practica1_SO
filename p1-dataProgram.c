@@ -215,7 +215,7 @@ void search_movie(const char *csv_filename, const char *index_filename, const ch
 
 int main(){
     // build_index("DataSet/all_movies_heavy.csv", "DataSet/hash_index.bin");
-
+    //
     int opcion = 0;
     while(opcion != 3){
         printf("\nBienvenido.\n1. Buscar por el nombre de la película.\n2. Realizar búsqueda.\n3. Salir.\n");
