@@ -1,0 +1,10 @@
+#Compilados
+*.o
+*.out
+*.exe
+
+#Dataset related
+DataSet/
+all_movies_heavy.csv
+hash_index.bin
+
