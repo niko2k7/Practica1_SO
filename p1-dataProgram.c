@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <ctype.h>
+
 
 #define TABLE_SIZE 5000003     // número primo grande (número de buckets)
 #define BUCKET_SIZE 16         // bytes por entrada en el archivo índice
@@ -115,6 +117,11 @@ void build_index(const char *csv_filename, const char *index_filename){
         int len = strlen(movie);
         if (len>CHAR_LENGTH) len=CHAR_LENGTH;
 
+        // Convertir a minúsculas antes de hacer el hash
+        for (int i = 0; movie[i]; i++) {
+            movie[i] = tolower((unsigned char)movie[i]);
+        }
+
         // Hacemos hash
         uint32_t hash = MurmurHash2(movie, len, SEED);
         // Calculamos la posicion en la tabla
@@ -175,11 +182,20 @@ void search_movie(const char *csv_filename, const char *index_filename, const ch
         return;
     }
 
+    // Copiar y convertir el nombre a minúsculas
+    char lower_name[256];
+    strncpy(lower_name, movie_name, sizeof(lower_name));
+    lower_name[sizeof(lower_name) - 1] = '\0';
+
+    for (int i = 0; lower_name[i]; i++) {
+        lower_name[i] = tolower((unsigned char)lower_name[i]);
+    }
+
     // Calcular hash
-    int len = strlen(movie_name);
+    int len = strlen(lower_name);
     if (len > CHAR_LENGTH) len = CHAR_LENGTH;
 
-    uint32_t hash = MurmurHash2(movie_name, len, SEED);
+    uint32_t hash = MurmurHash2(lower_name, len, SEED);
     uint32_t index_pos = hash % TABLE_SIZE;
 
     // Buscar bucket
@@ -216,7 +232,7 @@ void search_movie(const char *csv_filename, const char *index_filename, const ch
 }
 
 int main(){
-    // build_index("DataSet/all_movies_heavy.csv", "DataSet/hash_index.bin");
+    build_index("DataSet/all_movies_heavy.csv", "DataSet/hash_index.bin");
 
     int opcion = 0;
     while(opcion != 3){
