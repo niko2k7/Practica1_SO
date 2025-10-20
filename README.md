@@ -104,7 +104,7 @@ Docente: Cesar Augusto Pedraza Bonilla
 
 ---
  #### 1.3 Búsqueda y Criterios
-La búsqueda se centra en el atributo `product_smiles` porque actúa como el criterio principal y único para identificar una molécula. El SMILES es tomado como entrada para la función hash MurmurHash2 (implementada en el proyecto) para generar una clave numérica eficiente. Esta metodología se eligió específicamente para cumplir con el requisito de implementar una función de hashing propia, en lugar de utilizar el `product_hashisy` precalculado del dataset como clave. directa.
+La búsqueda se centra en el atributo `product_smiles` porque actúa como el criterio principal y único para identificar una molécula. El SMILES es tomado como entrada para la función hash MurmurHash2 (implementada en el proyecto) para generar una clave numérica eficiente. Esta metodología se eligió específicamente para cumplir con el requisito de implementar una función de hashing propia, en lugar de utilizar el `product_hashisy` precalculado del dataset como clave directa.
  
 <br><br>
 
@@ -115,26 +115,26 @@ La búsqueda se centra en el atributo `product_smiles` porque actúa como el cri
 
 ---
 
-## 5. Ejecución Local
+## 3. Ejecución Local
 
 br><br>
 
 ---
 
-## 6. Instrucciones de Uso
+## 4. Instrucciones de Uso
 
 <br><br>
 
 ---
 
-## 7. Ejemplos de Uso
+## 5. Ejemplos de Uso
 
 
 <br><br>
 
 ---
 
-## 8. Tecnologías Utilizadas
+## 6. Tecnologías Utilizadas
 
 Principales tecnologías, frameworks y librerías utilizadas en el proyecto.
 
