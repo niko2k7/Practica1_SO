@@ -1,16 +1,7 @@
-// MurmurHash2.c
-
 #include <stdint.h>
 #include <stddef.h> 
 
-/**
- * MurmurHash2
- * Función hash rápida que procesa una clave de cualquier longitud.
- * @param key Puntero a la clave de entrada.
- * @param len Longitud de la clave (strlen(key)).
- * @param seed Semilla del hash.
- * @return El valor hash de 32 bits.
- */
+//Función hash rápida que procesa una clave de cualquier longitud. Retorna el hash de 32 bits.
 uint32_t MurmurHash2(const void * key, int len, uint32_t seed)
 {
     const uint32_t m = 0x5bd1e995;
@@ -36,21 +27,17 @@ uint32_t MurmurHash2(const void * key, int len, uint32_t seed)
         len -= 4;
     }
 
-    // Procesa los bytes restantes (cola)
-    switch (len)
-    {
+    // Procesa los bytes restantes 
+    switch (len){
     case 3: 
         h ^= data[2] << 16;
-        __attribute__ ((fallthrough)); // Fall-through intencional para GCC
     case 2: 
         h ^= data[1] << 8;
-        __attribute__ ((fallthrough)); // Fall-through intencional para GCC
     case 1: 
         h ^= data[0];
         h *= m;
     };
 
-    // Cálculos finales
     h ^= h >> 13;
     h *= m;
     h ^= h >> 15;

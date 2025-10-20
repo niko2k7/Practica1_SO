@@ -1,42 +1,39 @@
- // worker_process.c
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <sys/stat.h>
+#include <sys/shm.h> 
 #include <unistd.h>
 #include <time.h>
-#include <errno.h> // Necesario para manejar EINTR
 #include "definitions.h" 
 
-// Puntero global para la tabla hash cargada en RAM (única variable global permitida)
+// El puntero hash_table global 
 IndexEntry *hash_table = NULL; 
 
-/**
- * @brief Función que busca la clave SMILES en el CSV usando la tabla hash en RAM.
- * @param fd_write Descriptor del FIFO de salida (Worker -> UI) para reportar resultados.
- */
-void search_key(const char *key, FILE *csv_file, FILE *index_file, int fd_write) {
+// Busca la clave SMILES y escribe el resultado directamente en el buffer de la SHM.
+void search_key(FILE *csv_file, FILE *index_file, SharedMessage *shm_ptr) {
     
-    // 1. Calcular Hash y posición inicial en RAM
+    const char *key = shm_ptr->search_key1;
+    
+    // Calcular Hash y posición inicial en RAM
     int len = strlen(key);
     uint32_t hash = MurmurHash2(key, len, SEED);
     uint32_t index_pos = hash % TABLE_SIZE;
 
     IndexEntry current_entry = hash_table[index_pos];
 
-    char response_buffer[CSV_LINE_MAX * 2];
+    shm_ptr->response_buffer[0] = '\0'; 
     int found = 0;
     
-    // Si el slot en RAM está vacío, la clave no existe
+    char *response_ptr = shm_ptr->response_buffer;
+    size_t remaining_size = sizeof(shm_ptr->response_buffer);
+
+    // Si el slot en RAM está vacío
     if (current_entry.hash == 0 && current_entry.offset == 0 && current_entry.next == -1) {
-        snprintf(response_buffer, sizeof(response_buffer), "Búsqueda finalizada.\nResultado: No se encontraron coincidencias para la clave SMILES '%s'.\n", key);
-        write(fd_write, response_buffer, strlen(response_buffer) + 1);
+        snprintf(response_ptr, remaining_size, "Búsqueda finalizada.\nResultado: No se encontraron coincidencias para la clave SMILES '%s'.\n", key);
         return;
     }
 
-    // 2. Iteración principal
+    // Iteración principal 
     while (1) {
         if (current_entry.hash == hash) {
             
@@ -45,7 +42,6 @@ void search_key(const char *key, FILE *csv_file, FILE *index_file, int fd_write)
                 char line[CSV_LINE_MAX];
                 if (fgets(line, sizeof(line), csv_file) != NULL) {
                     
-                    // C. Verificar la clave SMILES exacta (prevención de colisiones)
                     char temp_line[CSV_LINE_MAX];
                     strcpy(temp_line, line);
                     
@@ -55,26 +51,19 @@ void search_key(const char *key, FILE *csv_file, FILE *index_file, int fd_write)
 
                     if (found_key) {
                         
-                        // --- LÓGICA DE LIMPIEZA DE COMILLAS CORREGIDA ---
+                        // Limpiar commillas
                         found_key[strcspn(found_key, "\r\n")] = 0;
-                        
-                        // Limpieza robusta de comillas iniciales
-                        while (found_key[0] == '"') {
-                            memmove(found_key, found_key + 1, strlen(found_key));
-                        }
-
-                        // Limpieza robusta de comillas finales
+                        while (found_key[0] == '"') { memmove(found_key, found_key + 1, strlen(found_key)); }
                         size_t len_found = strlen(found_key);
-                        while (len_found > 0 && found_key[len_found - 1] == '"') {
-                            found_key[len_found - 1] = '\0';
-                            len_found--;
-                        }
-                        // --- FIN LÓGICA DE LIMPIEZA ---
-
+                        while (len_found > 0 && found_key[len_found - 1] == '"') { found_key[len_found - 1] = '\0'; len_found--; }
+                        
                         if (strcmp(found_key, key) == 0) {
                             found = 1;
-                            snprintf(response_buffer, sizeof(response_buffer), "COINCIDENCIA ENCONTRADA:\n%s\n", line);
-                            write(fd_write, response_buffer, strlen(response_buffer) + 1);
+
+                            // Escribir la coincidencia directamente en la memoria compartida
+                            snprintf(response_ptr, remaining_size, "Coincidencia encontrada:\n%s\n", line);
+                            response_ptr += strlen(response_ptr);
+                            remaining_size -= strlen(response_ptr);
                             
                             break; 
                         }
@@ -83,7 +72,7 @@ void search_key(const char *key, FILE *csv_file, FILE *index_file, int fd_write)
             }
         }
         
-        // D. Avanzar a la siguiente colisión
+        // Avanzar a la siguiente colisión
         int32_t next_index = current_entry.next;
         
         if (next_index != -1) {
@@ -97,95 +86,62 @@ void search_key(const char *key, FILE *csv_file, FILE *index_file, int fd_write)
 
     }
     
-    // 3. Reportar final de la búsqueda
+    // Imprimir final de la búsqueda
     if (!found) {
-        snprintf(response_buffer, sizeof(response_buffer), "Búsqueda finalizada.\nResultado: No se encontraron coincidencias para la clave SMILES '%s'.\n", key);
-        write(fd_write, response_buffer, strlen(response_buffer) + 1);
+        snprintf(shm_ptr->response_buffer, sizeof(shm_ptr->response_buffer), "(NA) Búsqueda finalizada.\nResultado: No se encontraron coincidencias para la clave SMILES '%s'.\n", key);
     } else {
-        snprintf(response_buffer, sizeof(response_buffer), "Búsqueda finalizada.\n");
-        write(fd_write, response_buffer, strlen(response_buffer) + 1);
+        // Si ya escribió la coincidencia, solo añade el final
+        snprintf(shm_ptr->response_buffer + strlen(shm_ptr->response_buffer), sizeof(shm_ptr->response_buffer) - strlen(shm_ptr->response_buffer), "Búsqueda finalizada.\n");
     }
 }
 
-/**
- * @brief Bucle principal del Worker. Inicializa recursos y escucha comandos.
- */
-void run_worker(const char *csv_filename, const char *index_filename) {
+
+void run_worker(const char *csv_filename, const char *index_filename, SharedMessage *shm_ptr) {
     
-    // 1. Cargar la tabla hash de disco a RAM
+    // Configuración de memoria compartida
+    shm_ptr->worker_pid = getpid();
+    
+    // Cargar la tabla hash de disco a RAM
     size_t table_size_bytes = (size_t)TABLE_SIZE * sizeof(IndexEntry);
     hash_table = (IndexEntry *)malloc(table_size_bytes);
-    if (!hash_table) {
-        perror("[WORKER] Error de malloc para la tabla hash");
-        exit(EXIT_FAILURE);
-    }
-    
+    if (!hash_table) { perror("#WORKER -> Error de malloc para la tabla hash"); exit(EXIT_FAILURE); }
     FILE *index_file_disk = fopen(index_filename, "rb");
-    if (!index_file_disk) {
-        perror("[WORKER] Error abriendo hash_index.bin. ¡Asegúrese de ejecutar index_builder primero!");
-        free(hash_table);
-        exit(EXIT_FAILURE);
-    }
+    if (!index_file_disk) { perror("[WORKER] Error abriendo hash_index.bin"); free(hash_table); exit(EXIT_FAILURE); }
+    if (fread(hash_table, sizeof(IndexEntry), TABLE_SIZE, index_file_disk) != TABLE_SIZE) { fprintf(stderr, "#WORKER -> Error leyendo el índice.\n"); }
+    printf("#WORKER -> Tabla hash cargada en RAM (%.2f MB). Esperando comandos...\n", (float)table_size_bytes / (1024 * 1024));
     
-    if (fread(hash_table, sizeof(IndexEntry), TABLE_SIZE, index_file_disk) != TABLE_SIZE) {
-        fprintf(stderr, "[WORKER] Error leyendo el índice. El archivo podría estar incompleto.\n");
-    }
-    printf("[WORKER] Tabla hash cargada en RAM (%.2f MB). Esperando comandos...\n", (float)table_size_bytes / (1024 * 1024));
-    
-    // 2. Abrir el CSV 
+    // Abrir el CSV 
     FILE *csv_file = fopen(csv_filename, "r");
-    if (!csv_file) {
-        perror("[WORKER] Error abriendo el dataset CSV");
-        fclose(index_file_disk);
-        free(hash_table);
-        exit(EXIT_FAILURE);
-    }
+    if (!csv_file) { fclose(index_file_disk); free(hash_table); exit(EXIT_FAILURE); }
     
-    // 3. Bucle principal de escucha y manejo de FIFOs
-    PipeMessage message;
+    // Bucle principal de escucha y manejo de memoria compartida
     while (1) {
-        
-        // A. Abrir FD_READ (Bloqueante, espera a que la UI escriba)
-        int fd_read = open(FIFO_UI_TO_WORKER, O_RDONLY);
-        if (fd_read == -1) { perror("[WORKER] Error abriendo FIFO de lectura. Reintentando..."); sleep(1); continue; }
+        // Esperar hasta que la UI envíe un comando
+        while (shm_ptr->command == CMD_NONE) {
+            usleep(10000); // Esperar 10000μs -> 10ms (polling)
+        }
 
-        // B. Leer mensaje (Bloqueante)
-        ssize_t bytes_read = read(fd_read, &message, sizeof(PipeMessage));
-        close(fd_read); // CERRAMOS: Permite que la UI lo abra en el siguiente ciclo
-
-        if (bytes_read > 0) {
+        if (shm_ptr->command == CMD_SEARCH) {
+            printf("#WORKER -> Buscando: '%s'...\n", shm_ptr->search_key1);
             
-            if (message.command == CMD_SEARCH) {
-                printf("[WORKER] Buscando: '%s'...\n", message.search_key1);
-                
-                // C. Abrir FD_WRITE
-                int fd_write = open(FIFO_WORKER_TO_UI, O_WRONLY);
-                if (fd_write == -1) { perror("[WORKER] Error abriendo FIFO de escritura."); continue; }
-                
-                // D. Ejecutar búsqueda y Escribir respuesta
-                clock_t start = clock();
-                search_key(message.search_key1, csv_file, index_file_disk, fd_write); 
-                clock_t end = clock();
-                double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-                
-                close(fd_write); // CERRAMOS: CRÍTICO. Esto desbloquea el read() de la UI
-                
-                printf("[WORKER] Búsqueda finalizada en %.4f segundos.\n", time_spent);
+            // D. Ejecutar búsqueda y Escribir respuesta en SHM (Pasar shm_ptr)
+            clock_t start = clock();
+            search_key(csv_file, index_file_disk, shm_ptr); 
+            clock_t end = clock();
+            double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+            
+            printf("#WORKER -> Búsqueda finalizada en %.7f segundos.\n", time_spent);
+            
+            // Señalizar a la UI que la búsqueda terminó
+            shm_ptr->command = CMD_NONE; 
 
-            } else if (message.command == CMD_EXIT) {
-                printf("[WORKER] Comando EXIT recibido. Terminando...\n");
-                break;
-            }
-        } else if (bytes_read == 0) {
-             printf("[WORKER] FIFO de lectura cerrado (UI terminó). Terminando...\n");
-             break;
-        } else if (bytes_read < 0 && errno != EINTR) {
-             perror("[WORKER] Error de lectura en FIFO");
-             break;
+        } else if (shm_ptr->command == CMD_EXIT) {
+            printf("#WORKER -> Comando EXIT recibido. Terminando...\n");
+            break;
         }
     }
 
-    // 5. Cleanup
+    // Solo se desmonta y elimina en main.c. Entonces solo liberamos la RAM interna.
     fclose(csv_file);
     fclose(index_file_disk);
     free(hash_table);

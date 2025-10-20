@@ -1,17 +1,10 @@
-// index_builder.c
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include "definitions.h" 
 
-// Prototipo local para la función de construcción
-void build_index(const char *csv_filename, const char *index_filename);
-
-/**
- * @brief Lee el archivo CSV y construye el índice hash binario en disco.
- */
+// Lee el archivo CSV y construye el índice hash binario en disco
 void build_index(const char *csv_filename, const char *index_filename){
     
     FILE *csv = fopen(csv_filename, "r");
@@ -27,7 +20,7 @@ void build_index(const char *csv_filename, const char *index_filename){
         exit(1);
     }
 
-    // 1. Llenar la tabla principal con structs IndexEntry vacías
+    // Llenar la tabla principal con structs IndexEntry vacías
     IndexEntry empty = {0, 0, -1};
     printf("Inicializando tabla de índice de %u entradas (Ajustada para <= 10MB)...\n", TABLE_SIZE);
     
@@ -40,49 +33,48 @@ void build_index(const char *csv_filename, const char *index_filename){
     uint64_t offset;
     long colisiones = 0;
 
-    // 2. Saltar el encabezado
+    // Saltar el encabezado
     fgets(line, sizeof(line), csv);
 
-    printf("Iniciando la construcción del índice. Esto puede tomar varios minutos...\n");
+    printf("Iniciando la construcción del índice. Esto puede tomar algunos minutos...\n");
 
     while (1) {
-        // Almacenamos el offset ANTES de leer la línea
+        // Almacenamos el offset antes de leer la línea
         offset = ftell(csv); 
         if (fgets(line, sizeof(line), csv) == NULL) break;
 
         char temp[CSV_LINE_MAX];
         strcpy(temp, line);
 
-        // --- Extracción de la clave: product_smiles (3ra columna) ---
+        // Extracción de la clave: product_smiles (3ra columna)
         strtok(temp, ","); // 1ra columna (product_name)
         strtok(NULL, ","); // 2da columna (product_hashisy)
         smiles_key = strtok(NULL, ","); // 3ra columna (product_smiles - CLAVE)
 
         if (!smiles_key) continue;
 
-        // 3. Limpieza de la clave
-
-        // A. Quitar salto de línea
+        // Limpieza de la clave
+        // Quitar salto de línea
         smiles_key[strcspn(smiles_key, "\r\n")] = 0;
 
-        // B. Limpieza robusta de comillas iniciales (maneja """ o "")
+        // Limpieza de comillas iniciales (maneja """ o "")
         while (smiles_key[0] == '"') {
             memmove(smiles_key, smiles_key + 1, strlen(smiles_key));
         }
 
-        // C. Limpieza robusta de comillas finales
+        // Limpieza de comillas finales
         size_t len_smiles = strlen(smiles_key);
         while (len_smiles > 0 && smiles_key[len_smiles - 1] == '"') {
             smiles_key[len_smiles - 1] = '\0';
             len_smiles--;
         }
         
-        // 4. Hashing e inserción
+        // Hashing e inserción
         int len = strlen(smiles_key);
         uint32_t hash = MurmurHash2(smiles_key, len, SEED);
         uint32_t index_pos = hash % TABLE_SIZE;
         
-        // Lógica de Colisión (Encadenamiento en el Archivo de Índice)
+        // Lógica de colisión (encadenamiento en el archivo de índice)
         IndexEntry current_bucket;
         fseek(index, index_pos * sizeof(IndexEntry), SEEK_SET);
         fread(&current_bucket, sizeof(IndexEntry), 1, index);
@@ -111,7 +103,7 @@ void build_index(const char *csv_filename, const char *index_filename){
 
     fclose(csv);
     fclose(index);
-    printf("✅ Índice hash creado correctamente: %s\n", index_filename);
+    printf("   Índice hash creado correctamente: %s\n", index_filename);
     printf("   Entradas totales en la tabla inicial: %u\n", TABLE_SIZE);
     printf("   Colisiones (Entradas de desbordamiento): %lu\n", colisiones);
 }

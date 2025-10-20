@@ -1,71 +1,86 @@
-// main.c (Coordinador de Procesos)
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
 #include <unistd.h>
-#include <errno.h>
+#include <sys/wait.h>
+#include <sys/shm.h> 
+#include <signal.h> 
 #include "definitions.h"
 
-// Prototipos de las funciones modulares (implementadas en otros .c)
-void run_ui();
-void run_worker(const char *csv_filename, const char *index_filename);
+// Definición del puntero a la SHM
+SharedMessage *shm_msg = NULL;
+int shm_msg_id = -1;
 
-/**
- * @brief Elimina los archivos FIFO.
- */
-void cleanup_fifos() {
-    unlink(FIFO_UI_TO_WORKER);
-    unlink(FIFO_WORKER_TO_UI);
+void run_worker(const char *csv_filename, const char *index_filename, SharedMessage *shm_ptr);
+void run_ui(SharedMessage *shm_ptr);
+
+// Función de limpieza de recursos
+void cleanup(int signum) {
+    if (shm_msg_id != -1) {
+        printf("#MAIN -> Desmontando y eliminando memoria compartida de mensajes...\n");
+        shmdt(shm_msg);
+        shmctl(shm_msg_id, IPC_RMID, NULL);
+    }
+    if (signum != 0) {
+        exit(0);
+    }
 }
 
 int main() {
-    pid_t pid;
-
-    // 1. Crear las Tuberías Nombradas (FIFOs)
-    cleanup_fifos();
     
-    if (mkfifo(FIFO_UI_TO_WORKER, 0666) == -1 && errno != EEXIST) {
-        perror("[MAIN] Error creando FIFO_UI_TO_WORKER");
-        return 1;
+    // Configurar la memoria compartida 
+    shm_msg_id = shmget(SHM_KEY_DATA, sizeof(SharedMessage), 0666 | IPC_CREAT);
+    if (shm_msg_id < 0) {
+        perror("#MAIN -> Error al crear memoria compartida");
+        exit(EXIT_FAILURE);
     }
-    if (mkfifo(FIFO_WORKER_TO_UI, 0666) == -1 && errno != EEXIST) {
-        perror("[MAIN] Error creando FIFO_WORKER_TO_UI");
-        cleanup_fifos();
-        return 1;
+
+    shm_msg = (SharedMessage *)shmat(shm_msg_id, 0, 0);
+    if (shm_msg == (SharedMessage *)-1) {
+        perror("[MAIN] Error al adjuntar Memoria Compartida");
+        shmctl(shm_msg_id, IPC_RMID, NULL); 
+        exit(EXIT_FAILURE);
     }
-    printf("[MAIN] FIFOs creados.\n");
 
+    // Inicializar la memoria y establecer el manejador de señales
+    shm_msg->command = CMD_NONE;
+    shm_msg->worker_pid = 0;
+    shm_msg->ui_pid = 0;
+    signal(SIGINT, cleanup);
 
-    // 2. Crear los procesos (fork)
-    pid = fork();
+    printf("#MAIN -> Memoria Compartida creada y adjunta.\n");
 
-    if (pid < 0) {
-        perror("[MAIN] Error en fork");
-        cleanup_fifos();
-        return 1;
-    } 
-    
-    // --- Proceso Hijo (Worker) ---
-    if (pid == 0) {
-        run_worker(DATASET_FILENAME, INDEX_FILENAME);
+    // Creación de procesos hijos
+    pid_t pid_worker = fork();
+
+    if (pid_worker == 0) {
+        run_worker(DATASET_FILENAME, INDEX_FILENAME, shm_msg);
         exit(0);
-    } 
-    
-    // --- Proceso Padre (UI) ---
-    else {
-        run_ui();
-        
-        // Espera a que el Worker (hijo) termine
-        int status;
-        waitpid(pid, &status, 0);
-        
-        // Limpia FIFOs
-        cleanup_fifos();
-        printf("[MAIN] Programa finalizado y recursos liberados.\n");
+    } else if (pid_worker < 0) {
+        perror("#MAIN -> Error fork Worker");
+        cleanup(0);
+        exit(EXIT_FAILURE);
     }
+
+    pid_t pid_ui = fork();
+
+    if (pid_ui == 0) {
+        sleep(1); 
+        run_ui(shm_msg);
+        exit(0);
+    } else if (pid_ui < 0) {
+        perror("#MAIN -> Error fork UI");
+        if (pid_worker > 0) kill(pid_worker, SIGTERM);
+        cleanup(0);
+        exit(EXIT_FAILURE);
+    }
+
+    // Proceso padre (main) espera a que los hijos terminen
+    int status;
+    wait(NULL);
+    wait(NULL);
+
+    printf("#MAIN -> Programa finalizado y recursos liberados.\n");
+    cleanup(0); 
 
     return 0;
 }
