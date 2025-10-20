@@ -41,7 +41,7 @@ Docente: Cesar Augusto Pedraza Bonilla
 .
 ├───chemestry/
 │   │
-│   ├───dataset_1_1GB.csv                      # Dataset de 1.1GB
+│   ├───dataset_1_1GB.csv                      # Dataset de 1.1GB (parte del dataset original)
 │   ├───definitions.h                          # Archivo de cabecera con definiciones de estructuras (ej: SHM, estructuras de datos), constantes, etc.
 │   ├───index_builder.c                        # Código para el programa que crea/actualiza la tabla hash (hash_index.bin).
 │   ├───main.c                                 # Código del proceso principal. Encargado de la lógica de procesos (SHM, fork, wait, etc), y orquestación.
@@ -49,10 +49,13 @@ Docente: Cesar Augusto Pedraza Bonilla
 │   ├───ui_process.c                           # Código del proceso UI. Gestiona la entrada/salida del usuario.
 │   └───worker_process.c                       # Código del proceso Worker. Contiene la lógica principal de búsqueda en el archivo indexado.
 ```
+Dataset: [MINI_SAVI Dataset en Hugging Face](https://huggingface.co/datasets/T-NOVA/MINI_SAVI)
+
 <br><br>
 
 ---
 #### 1.2 Estructura del Dataset
+
 - product_name: Guarda el nombre completo o identificador de la reacción.
 
 - product_hashisy: Guarda el identificador único del producto químico.
@@ -117,7 +120,7 @@ La búsqueda se centra en el atributo `product_smiles` porque actúa como el cri
 
 ## 3. Ejecución Local
 
-br><br>
+<br><br>
 
 ---
 
