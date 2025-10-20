@@ -106,9 +106,9 @@ void run_worker(const char *csv_filename, const char *index_filename, SharedMess
     hash_table = (IndexEntry *)malloc(table_size_bytes);
     if (!hash_table) { perror("#WORKER -> Error de malloc para la tabla hash"); exit(EXIT_FAILURE); }
     FILE *index_file_disk = fopen(index_filename, "rb");
-    if (!index_file_disk) { perror("[WORKER] Error abriendo hash_index.bin"); free(hash_table); exit(EXIT_FAILURE); }
+    if (!index_file_disk) { perror("#WORKER -> Error abriendo hash_index.bin"); free(hash_table); exit(EXIT_FAILURE); }
     if (fread(hash_table, sizeof(IndexEntry), TABLE_SIZE, index_file_disk) != TABLE_SIZE) { fprintf(stderr, "#WORKER -> Error leyendo el índice.\n"); }
-    printf("#WORKER -> Tabla hash cargada en RAM (%.2f MB). Esperando comandos...\n", (float)table_size_bytes / (1024 * 1024));
+    printf("#WORKER -> Tabla hash cargada en RAM (%.3f MB). Esperando comandos...\n", (float)table_size_bytes / (1024 * 1024));
     
     // Abrir el CSV 
     FILE *csv_file = fopen(csv_filename, "r");
@@ -124,7 +124,7 @@ void run_worker(const char *csv_filename, const char *index_filename, SharedMess
         if (shm_ptr->command == CMD_SEARCH) {
             printf("#WORKER -> Buscando: '%s'...\n", shm_ptr->search_key1);
             
-            // D. Ejecutar búsqueda y Escribir respuesta en SHM (Pasar shm_ptr)
+            // Ejecutar búsqueda y escribir respuesta en SHM 
             clock_t start = clock();
             search_key(csv_file, index_file_disk, shm_ptr); 
             clock_t end = clock();
