@@ -2,6 +2,9 @@
 *.o
 *.out
 *.exe
+index_builder
+search_process
+ui_process
 
 #Dataset related
 DataSet/
