@@ -1,8 +1,8 @@
 Comandos para ejecutar el programa en la terminal de Linux:
 // Crear el archivo binario 
-gcc -o index_builder index_builder.c MurmurHash2.c -Wall -Wextra
+gcc index_builder.c MurmurHash2.c -o index_builder
 ./index_builder 
 
 // Realizar las búsquedas 
-gcc -o main main.c worker_process.c ui_process.c MurmurHash2.c -Wall -Wextra
+gcc main.c worker_process.c ui_process.c MurmurHash2.c -o main  
 ./main
