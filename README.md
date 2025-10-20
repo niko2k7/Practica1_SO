@@ -23,9 +23,9 @@ Docente: Cesar Augusto Pedraza Bonilla
 
 - [1. Estructura del Proyecto](#1-estructura-del-proyecto)
   - [1.2 Estructura del Dataset](#12-estructura-del-dataset)
-  - [1.3 Búsqueda y Criterios](#13-busqueda-y-criterios)
+  - [1.3 Búsqueda y Criterios](#13-búsqueda-y-criterios)
 - [2. Requisitos de Instalación](#2-requisitos-de-instalación)
-- [3. Ejecución Local](#3-ejecucion-local)
+- [3. Ejecución Local](#3-ejecución-local)
 - [4. Instrucciones de Uso](#4-instrucciones-de-uso)
 - [5. Ejemplos de Uso](#5-ejemplos-de-uso)
 - [6. Tecnologías Utilizadas](#6-tecnologías-utilizadas)
