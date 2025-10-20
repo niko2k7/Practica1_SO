@@ -36,7 +36,7 @@ int main() {
 
     shm_msg = (SharedMessage *)shmat(shm_msg_id, 0, 0);
     if (shm_msg == (SharedMessage *)-1) {
-        perror("[MAIN] Error al adjuntar Memoria Compartida");
+        perror("MAIN -> Error al adjuntar Memoria Compartida");
         shmctl(shm_msg_id, IPC_RMID, NULL); 
         exit(EXIT_FAILURE);
     }
