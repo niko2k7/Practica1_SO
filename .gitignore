@@ -11,3 +11,6 @@ DataSet/
 all_movies_heavy.csv
 hash_index.bin
 
+#Vscode related
+.vscode/
+
