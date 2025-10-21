@@ -1,4 +1,4 @@
-# Proyecto – Indexación y Búsqueda de Películas
+# Práctica 1 – SO - Procesos y comunicación entre procesos
 
 <br>
 <img src="https://www.pngkey.com/png/detail/268-2688228_universidad-nacional-colombia-logo.png" width="230" alt="Logo Universidad Nacional de Colombia">
