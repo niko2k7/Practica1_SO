@@ -6,7 +6,7 @@
 #include <sys/wait.h> 
 
 // -------------- Relacionado a hash y a búsqueda
-#define DATASET_FILENAME "DataSet/all_movies_heavy.csv"
+#define DATASET_FILENAME "DataSet/all_movies_expanded.csv"
 #define INDEX_FILENAME "DataSet/hash_index.bin"
 #define TABLE_SIZE 5000003     // número primo grande (número de buckets)
 #define SEED 0x9747b28c        // semilla del hash

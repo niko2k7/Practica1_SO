@@ -95,7 +95,7 @@ int main(){
         exit(1);
     }
 
-    printf("🔍 Proceso de búsqueda en espera...\n");
+    printf("Proceso de búsqueda en espera...\n");
 
     while (1) {
         if (shared->flag == READY) {
