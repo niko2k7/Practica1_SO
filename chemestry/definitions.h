@@ -7,8 +7,8 @@
 #define INDEX_FILENAME "hash_index.bin"
 #define CSV_LINE_MAX 2048
 #define SEARCH_KEY_MAX 256
-// Tamaño ajustado a ~9.6 MB para cumplir el requisito <= 10MB 
-#define TABLE_SIZE 419407 
+// Tamaño ajustado a para cumplir el requisito <= 10MB 
+#define TABLE_SIZE 1000 
 #define SEED 0xDEADBEEF
 
 // Estructuras de datos
