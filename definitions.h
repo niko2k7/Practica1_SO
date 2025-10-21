@@ -1,21 +1,24 @@
 #ifndef DEFINITIONS_H
 #define DEFINITIONS_H
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
-#include <unistd.h> 
+#include <string.h>
 #include <sys/wait.h> 
 
 // -------------- Relacionado a hash y a búsqueda
 #define DATASET_FILENAME "DataSet/all_movies_expanded.csv"
 #define INDEX_FILENAME "DataSet/hash_index.bin"
 #define TABLE_SIZE 5000003     // número primo grande (número de buckets)
-#define SEED 0x9747b28c        // semilla del hash
+#define SEED 0xDEADBEEF        // semilla del hash
 #define CHAR_LENGTH 15
 
 #define MOVIE_NAME_SIZE 100
 #define RESULT_SIZE 8192
-#define READY 1
 #define NOT_READY 0
+#define READY 1
+#define EXIT 2
 
 typedef struct {
     uint32_t hash;     // hash del Movie_Name
@@ -27,11 +30,7 @@ typedef struct {
 uint32_t MurmurHash2(const void *key, int len, uint32_t seed);
 
 // -------------- Relacionado a memoria compartida
-#define SHM_KEY_DATA 12345      // Clave para la memoria compartida de mensajes
-
-#define CMD_NONE 0
-#define CMD_SEARCH 1
-#define CMD_EXIT 2
+#define SHM_KEY_DATA 12345  // Clave para la memoria compartida de mensajes
 
 // Estructura de comunicación entre procesos (UI, Worker)
 typedef struct {

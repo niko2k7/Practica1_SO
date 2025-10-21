@@ -1,7 +1,4 @@
-#include <stdio.h>
-#include <string.h>
 #include <ctype.h>
-#include <stdlib.h>
 #include "definitions.h"
 
 // Creación del índice hash

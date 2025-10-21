@@ -1,14 +1,10 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include <unistd.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <unistd.h>
-#include <string.h>
 #include <time.h>
-#include <time.h>
-
 #include "definitions.h"
+
+
 
 int main(){
     key_t key = SHM_KEY_DATA;
@@ -59,19 +55,23 @@ int main(){
 
                 shared->flag = READY;
                 printf("Esperando resultado...\n");
+
                 // Esperar a que el proceso de búsqueda actualice el resultado
-                //sleep(1); // pequeña pausa para que el otro proceso lea/escriba
+                while (shared->flag == READY) {
+                    usleep(1);
+                }
 
                 printf("\n=== Resultado ===\n%s\n", shared->result);
 
                 clock_gettime(CLOCK_MONOTONIC, &end); // fin
                 double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+
                 printf("Tiempo total de búsqueda: %.6f segundos\n", elapsed);
                 break;
 
             case 3:
                 printf("Saliendo...\n");
-                shared->flag = CMD_EXIT;
+                shared->flag = EXIT;
                 break;
 
             default:

@@ -1,12 +1,8 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
+#include <unistd.h>
 #include <ctype.h>
-
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <unistd.h>
+
 #include "definitions.h"
 
 // Búsqueda
@@ -101,11 +97,11 @@ int main(){
         if (shared->flag == READY) {
             search_movie(DATASET_FILENAME, INDEX_FILENAME, shared->movie_name, shared->result);
             shared->flag = NOT_READY;
-        } else if (shared->flag == CMD_EXIT) {
+        } else if (shared->flag == EXIT) {
             printf("Finalizando proceso de búsqueda.\n");
             break;
         }
-        usleep(200000); // evitar consumo excesivo de CPU
+        usleep(1000); // evitar consumo excesivo de CPU
     }
 
     shmdt(shared);
