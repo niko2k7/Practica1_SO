@@ -36,7 +36,7 @@ Docente: **Cesar Augusto Pedraza Bonilla**
 ├── DataSet
 │   ├── all_movies_expanded.csv        # Dataset expandido (4.6M filas, ~1.3 GB)
 │   └── hash_index.bin                 # Archivo binario con la tabla hash generada
-├── README.md                          # Este archivo de documentación
+├── README.md                          # Este archivo de documentación pertienete.
 ├── Makefile                           # Archivo para compilación de los programas
 ├── murmurHash.c                       # Implementación de la función MurmurHash2 (32 bits)
 ├── definitions.h                      # Cabecera con estructuras, constantes, etc.
