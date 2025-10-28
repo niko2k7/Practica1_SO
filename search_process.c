@@ -51,6 +51,7 @@ void search_movie(const char *csv_filename, const char *index_filename, const ch
             if (fgets(line, sizeof(line), csv)) {
                 snprintf(output, RESULT_SIZE, "%s", line);  // Copia al área compartida
                 printf("\nPelícula encontrada:\n%s\n", line);
+                // strncat(output, line, RESULT_SIZE - strlen(output) - 1); //para imprimir cada coincidencia de hash
             } else {
                 snprintf(output, RESULT_SIZE, "Error: No se pudo leer la línea en el CSV.\n");
                 printf("No se pudo leer la línea en el CSV.\n");

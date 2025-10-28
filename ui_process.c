@@ -4,8 +4,6 @@
 #include <time.h>
 #include "definitions.h"
 
-
-
 int main(){
     key_t key = SHM_KEY_DATA;
     int shmid;
@@ -52,7 +50,7 @@ int main(){
 
                 struct timespec start, end;
                 clock_gettime(CLOCK_MONOTONIC, &start); // inicio
-
+                // memset(shared->result, 0, sizeof(shared->result));
                 shared->flag = READY;
                 printf("Esperando resultado...\n");
 
