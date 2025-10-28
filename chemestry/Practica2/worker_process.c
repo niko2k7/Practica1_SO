@@ -7,17 +7,18 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/select.h> 
+#include <sys/time.h>
 #include "definitions.h" 
 
-// Variables Globales de Recursos (para ser limpiados por la señal)
+// Variables Globales de recursos (para ser limpiados por la señal)
 IndexEntry *hash_table = NULL; 
 FILE *index_file_disk = NULL; 
 FILE *csv_file = NULL;
 int server_fd = -1; 
 
-// Globales para el índice de offsets
-FILE *offset_index_file = NULL; // Archivo de offsets (para añadir nuevos)
-uint64_t *line_offsets = NULL;  // Puntero al array de offsets en RAM (para búsqueda O(1))
+// GLOBALES para el índice de offsets
+FILE *offset_index_file = NULL; // Archivo de offsets (solo en disco, mantenido abierto)
 long total_records = 0;         // Número total de líneas/registros
 
 volatile sig_atomic_t keep_running = 1; 
@@ -27,7 +28,7 @@ void cleanup_worker(int signum) {
     if (signum != 0) {
         printf("\n#WORKER -> Señal %d (Ctrl+C) recibida. Iniciando limpieza de recursos...\n", signum);
     } else {
-        printf("\n#WORKER -> Terminación remota solicitada. Iniciando limpieza de recursos...\n");
+        printf("\n#WORKER -> Terminación solicitada. Iniciando limpieza de recursos...\n");
     }
     
     keep_running = 0; 
@@ -47,18 +48,11 @@ void cleanup_worker(int signum) {
         fclose(index_file_disk);
         index_file_disk = NULL;
     }
-
     if (offset_index_file) {
         printf("#WORKER -> Cerrando archivo de índice de Offsets...\n");
         fclose(offset_index_file);
         offset_index_file = NULL;
     }
-    if (line_offsets) {
-        printf("#WORKER -> Liberando memoria line_offsets...\n");
-        free(line_offsets);
-        line_offsets = NULL;
-    }
-
     if (hash_table) {
         printf("#WORKER -> Liberando memoria hash_table...\n");
         free(hash_table);
@@ -108,9 +102,9 @@ int initialize_server_socket() {
     return server_fd;
 }
 
-// CMD_SEARCH: Busca la clave SMILES en el índice y CSV
+// CMD_SEARCH
 void search_key(FILE *csv_file, FILE *index_file, const char *key, ServerResponse *response) {
-
+    
     response->status = STATUS_NOT_FOUND;
     response->response_buffer[0] = '\0';
     
@@ -119,7 +113,7 @@ void search_key(FILE *csv_file, FILE *index_file, const char *key, ServerRespons
     uint32_t index_pos = hash % TABLE_SIZE;
 
     if (!hash_table) {
-        snprintf(response->response_buffer, sizeof(response->response_buffer), "Error interno: Tabla hash no cargada.");
+        snprintf(response->response_buffer, sizeof(response->response_buffer), "Error: Tabla hash no cargada.");
         response->status = STATUS_ERROR;
         return;
     }
@@ -171,8 +165,7 @@ void search_key(FILE *csv_file, FILE *index_file, const char *key, ServerRespons
              "Resultado: No se encontraron coincidencias para la clave SMILES '%s'.", key);
 }
 
-
-// CMD_WRITE: Escribe registro en CSV y actualiza AMBOS índices
+// CMD_WRITE
 void write_record(FILE *csv_file, FILE *index_file, const char *record, ServerResponse *response) {
     
     response->status = STATUS_ERROR;
@@ -185,7 +178,7 @@ void write_record(FILE *csv_file, FILE *index_file, const char *record, ServerRe
     
     strtok(key_copy, ","); 
     strtok(NULL, ",");          
-    char *smiles_key = strtok(NULL, ","); // product_smiles (CLAVE)
+    char *smiles_key = strtok(NULL, ","); 
     
     if (!smiles_key) {
         snprintf(response->response_buffer, sizeof(response->response_buffer), "Error: El registro de entrada no contiene la clave SMILES (3ra columna).");
@@ -223,27 +216,19 @@ void write_record(FILE *csv_file, FILE *index_file, const char *record, ServerRe
     }
     fflush(csv_file); 
     
-    // Actualizar el índice de Offsets
+    // Actualizar el índice de Offsets (SOLO DISCO para ahorrar RAM)
     if (!offset_index_file) {
-        snprintf(response->response_buffer, sizeof(response->response_buffer), "Error interno: Archivo de offsets no abierto.");
+        snprintf(response->response_buffer, sizeof(response->response_buffer), "Error: Archivo de offsets no abierto.");
         return;
     }
     fseek(offset_index_file, 0, SEEK_END);
     fwrite(&offset, sizeof(uint64_t), 1, offset_index_file);
     fflush(offset_index_file);
 
-    // Actualizar el array de offsets en RAM (por si hay otra escritura o lectura inmediata)
+    // Actualizar solo el contador (total_records)
     total_records++;
-    line_offsets = (uint64_t *)realloc(line_offsets, total_records * sizeof(uint64_t));
-    if (!line_offsets) {
-        perror("Error de realloc en line_offsets");
-        snprintf(response->response_buffer, sizeof(response->response_buffer), "Error interno de memoria al expandir índice de offsets.");
-        response->status = STATUS_ERROR;
-        return;
-    }
-    line_offsets[total_records - 1] = offset;
-
-    // Actualizar la tabla Hash (en RAM y Disco)
+    
+    // Actualizar la tabla Hash (RAM y disco)
     int len = strlen(smiles_key);
     uint32_t hash = MurmurHash2(smiles_key, len, SEED);
     uint32_t index_pos = hash % TABLE_SIZE;
@@ -278,7 +263,7 @@ void write_record(FILE *csv_file, FILE *index_file, const char *record, ServerRe
              total_records, (unsigned long long)offset, smiles_key);
 }
 
-// CMD_READ_BY_NUM: Lectura acelerada por número de línea (O(1))
+// CMD_READ_BY_NUM (Lectura Acelerada de Offsets desde Disco)
 void read_by_number(FILE *csv_file_ptr, int record_num, ServerResponse *response) {
     
     response->status = STATUS_NOT_FOUND;
@@ -286,12 +271,6 @@ void read_by_number(FILE *csv_file_ptr, int record_num, ServerResponse *response
     
     int index = record_num - 1; // El índice es 0-based
     
-    if (!line_offsets) {
-        snprintf(response->response_buffer, sizeof(response->response_buffer), "Error interno: Índice de offsets no cargado.");
-        response->status = STATUS_ERROR;
-        return;
-    }
-
     if (index < 0 || index >= total_records) {
         snprintf(response->response_buffer, sizeof(response->response_buffer), 
                  "Error: El número de registro %d está fuera del rango (1 a %ld).", record_num, total_records);
@@ -299,12 +278,30 @@ void read_by_number(FILE *csv_file_ptr, int record_num, ServerResponse *response
         return;
     }
 
-    // BÚSQUEDA O(1): Obtener el offset de la RAM y saltar en el archivo
-    uint64_t offset = line_offsets[index];
+    // Leer el offset directamente del archivo binario
+    uint64_t offset_file_pos = (uint64_t)index * sizeof(uint64_t);
+
+    // Saltar en el archivo de offsets
+    if (fseek(offset_index_file, (long)offset_file_pos, SEEK_SET) != 0) {
+        snprintf(response->response_buffer, sizeof(response->response_buffer), 
+                 "Error de I/O: Fallo al buscar la posición del offset en el índice binario.");
+        response->status = STATUS_ERROR;
+        return;
+    }
     
+    uint64_t offset;
+    // Leer el offset
+    if (fread(&offset, sizeof(uint64_t), 1, offset_index_file) != 1) {
+        snprintf(response->response_buffer, sizeof(response->response_buffer), 
+                 "Error de I/O: No se pudo leer el offset del índice binario.");
+        response->status = STATUS_ERROR;
+        return;
+    }
+
+    // Saltar al registro en el CSV
     if (fseek(csv_file_ptr, (long)offset, SEEK_SET) != 0) {
         snprintf(response->response_buffer, sizeof(response->response_buffer), 
-                 "Error de I/O: Fallo al buscar el offset %llu.", (unsigned long long)offset);
+                 "Error de I/O: Fallo al buscar el offset %llu en el CSV.", (unsigned long long)offset);
         response->status = STATUS_ERROR;
         return;
     }
@@ -323,7 +320,7 @@ void read_by_number(FILE *csv_file_ptr, int record_num, ServerResponse *response
 }
 
 
-// Bucle Principal del Worker/Servidor
+// Bucle Principal del Worker/Servidor (Lógica select/q+enter)
 int run_worker(const char *csv_filename, const char *index_filename) {
     
     signal(SIGINT, cleanup_worker);
@@ -334,110 +331,131 @@ int run_worker(const char *csv_filename, const char *index_filename) {
     hash_table = (IndexEntry *)malloc(table_size_bytes);
     if (!hash_table) { perror("#WORKER -> Error de malloc para la tabla hash"); cleanup_worker(0); return EXIT_FAILURE; }
     
-    // Abrir archivos
     index_file_disk = fopen(index_filename, "rb+"); 
     if (!index_file_disk) { perror("#WORKER -> Error abriendo hash_index.bin (Debe existir)"); cleanup_worker(0); return EXIT_FAILURE; }
     
     if (fread(hash_table, sizeof(IndexEntry), TABLE_SIZE, index_file_disk) != TABLE_SIZE) { 
-        fprintf(stderr, "#WORKER -> Advertencia: Índice Hash inicial incompleto.\n");
+        fprintf(stderr, "#WORKER -> Error: Índice Hash inicial incompleto.\n");
     }
     printf("#WORKER -> Tabla hash cargada en RAM (%.3f MB).", (float)table_size_bytes / (1024 * 1024));
     
     csv_file = fopen(csv_filename, "rb+");
     if (!csv_file) { perror("#WORKER -> Error abriendo CSV"); cleanup_worker(0); return EXIT_FAILURE; }
     
-    // Cargar el Índice de Offsets a RAM
-    offset_index_file = fopen(OFFSET_INDEX_FILENAME, "rb+");
+    // Abrir el Índice de Offsets (SOLO DISCO) 
+    offset_index_file = fopen(OFFSET_INDEX_FILENAME, "rb+"); 
     if (!offset_index_file) { 
         perror("#WORKER -> Error abriendo line_offsets.bin (Debe existir)"); 
         cleanup_worker(0); 
         return EXIT_FAILURE; 
     }
 
-    // Determinar el tamaño y el número de registros
+    // Determinar el número total de registros
     fseek(offset_index_file, 0, SEEK_END);
     long file_size = ftell(offset_index_file);
     rewind(offset_index_file);
 
     total_records = file_size / sizeof(uint64_t);
-    line_offsets = (uint64_t *)malloc(file_size);
 
-    if (!line_offsets) {
-        perror("#WORKER -> Error de malloc para line_offsets");
-        cleanup_worker(0); 
-        return EXIT_FAILURE; 
-    }
+    printf(" Índice de offsets en DISCO cargado (%ld registros). Archivos abiertos.\n", total_records);
 
-    if (fread(line_offsets, sizeof(uint64_t), total_records, offset_index_file) != total_records) {
-        fprintf(stderr, "#WORKER -> Error leyendo índice de offsets (total esperado: %ld).\n", total_records);
-    }
-    printf(" Índice de offsets cargado (%ld registros). Archivos abiertos.\n", total_records);
-
-    // Inicialización del Socket Servidor 
+    // Inicialización del Socket servidor
     server_fd = initialize_server_socket();
     if (server_fd < 0) {
         cleanup_worker(0);
         return EXIT_FAILURE;
     }
-    printf("#WORKER -> Servidor listo. Esperando conexiones...\n");
+    printf("#WORKER -> Servidor listo. Ingrese 'q' + ENTER para apagarlo.\n");
 
-    // Bucle principal de manejo de conexiones 
+    // Bucle principal de manejo de conexiones y teclado 
     struct sockaddr_in address;
     socklen_t addrlen = sizeof(address);
     int new_socket;
     ClientMessage client_request;
     ServerResponse server_response;
 
+    fd_set readfds; 
+    struct timeval tv; 
+    char exit_buffer[5]; 
+
     while (keep_running) {
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen)) < 0) {
+        FD_ZERO(&readfds);
+        FD_SET(server_fd, &readfds);      
+        FD_SET(STDIN_FILENO, &readfds);   
+
+        int max_fd = server_fd > STDIN_FILENO ? server_fd : STDIN_FILENO;
+
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+        
+        int activity = select(max_fd + 1, &readfds, NULL, NULL, &tv);
+
+        if (activity < 0) {
             if (keep_running == 0) break; 
-            perror("#WORKER_SERVER -> Error en accept");
+            perror("#WORKER_SERVER -> Error en select");
             continue;
         }
         
-        printf("\n#WORKER_SERVER -> Conexión aceptada desde %s.\n", inet_ntoa(address.sin_addr));
-
-        while (keep_running) {
-            ssize_t valread = recv(new_socket, &client_request, sizeof(ClientMessage), 0);
-            
-            if (valread <= 0) {
-                printf("#WORKER_SERVER -> Cliente desconectado. Cerrando socket.\n");
-                break;
+        // Verificar entrada estándar ("q" + ENTER)
+        if (FD_ISSET(STDIN_FILENO, &readfds)) {
+            if (fgets(exit_buffer, sizeof(exit_buffer), stdin) != NULL) {
+                if (strcmp(exit_buffer, "q\n") == 0 || strcmp(exit_buffer, "Q\n") == 0) {
+                    printf("\n#WORKER -> Comando 'q' recibido. Apagando servidor...\n");
+                    keep_running = 0; 
+                    break;
+                }
             }
-            
-            clock_t start = clock();
-            memset(&server_response, 0, sizeof(ServerResponse)); 
-
-            if (client_request.command == CMD_SEARCH) {
-                // CMD_SEARCH
-                search_key(csv_file, index_file_disk, client_request.key_or_record, &server_response);
-                
-            } else if (client_request.command == CMD_WRITE) {
-                // CMD_WRITE
-                write_record(csv_file, index_file_disk, client_request.key_or_record, &server_response);
-                
-            } else if (client_request.command == CMD_READ_BY_NUM) {
-                // CMD_READ_BY_NUM
-                read_by_number(csv_file, client_request.record_number, &server_response);
-                
-            } else if (client_request.command == CMD_EXIT) {
-                printf("#WORKER -> Comando CMD_EXIT recibido. Apagando servidor remotamente.\n");
-                keep_running = 0; 
-                break; 
-                
-            } else {
-                server_response.status = STATUS_ERROR;
-                snprintf(server_response.response_buffer, sizeof(server_response.response_buffer), "Comando desconocido: %d", client_request.command);
-            }
-            
-            clock_t end = clock();
-            double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
-            printf("#WORKER -> Tarea finalizada en %.5f segundos.\n", time_spent);
-
-            send(new_socket, &server_response, sizeof(ServerResponse), 0);
         }
 
-        if (new_socket != -1) close(new_socket); 
+        // Verificar Socket de red (Nueva conexión)
+        if (FD_ISSET(server_fd, &readfds)) {
+            if ((new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen)) < 0) {
+                if (keep_running == 0) break;
+                perror("#WORKER_SERVER -> Error en accept");
+                continue;
+            }
+            
+            printf("\n#WORKER_SERVER -> Conexión aceptada desde %s.\n", inet_ntoa(address.sin_addr));
+
+            while (keep_running) {
+                ssize_t valread = recv(new_socket, &client_request, sizeof(ClientMessage), 0);
+                
+                if (valread <= 0) {
+                    printf("#WORKER_SERVER -> Cliente desconectado. Cerrando socket.\n");
+                    break; 
+                }
+                
+                clock_t start = clock();
+                memset(&server_response, 0, sizeof(ServerResponse)); 
+
+                if (client_request.command == CMD_SEARCH) {
+                    search_key(csv_file, index_file_disk, client_request.key_or_record, &server_response);
+                    
+                } else if (client_request.command == CMD_WRITE) {
+                    write_record(csv_file, index_file_disk, client_request.key_or_record, &server_response);
+                    
+                } else if (client_request.command == CMD_READ_BY_NUM) {
+                    read_by_number(csv_file, client_request.record_number, &server_response);
+                    
+                } else if (client_request.command == CMD_EXIT) {
+                    // Solo cierra la conexión del cliente, el servidor permanece activo
+                    printf("#WORKER -> Comando CMD_EXIT recibido del cliente. Cerrando conexión.\n");
+                    break; 
+                    
+                } else {
+                    server_response.status = STATUS_ERROR;
+                    snprintf(server_response.response_buffer, sizeof(server_response.response_buffer), "Comando desconocido: %d", client_request.command);
+                }
+                
+                clock_t end = clock();
+                double time_spent = (double)(end - start) / CLOCKS_PER_SEC;
+                printf("#WORKER -> Tarea finalizada en %.5f segundos.\n", time_spent);
+
+                send(new_socket, &server_response, sizeof(ServerResponse), 0);
+            }
+
+            if (new_socket != -1) close(new_socket); 
+        }
     }
 
     cleanup_worker(0); 
