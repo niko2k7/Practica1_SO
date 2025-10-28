@@ -8,7 +8,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/select.h> 
-#include <sys/time.h>
 #include "definitions.h" 
 
 // Variables Globales de recursos (para ser limpiados por la señal)
